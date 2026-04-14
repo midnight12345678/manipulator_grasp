@@ -1,0 +1,21 @@
+{
+  "runtime": {
+    "instruction": "grasp the red object and place it on the right side",
+    "episode_steps": 150,
+    "show_gui": false,
+    "camera_id": 0,
+    "sim_hz": 500
+  },
+  "guidance": {
+    "use_guidance": true,
+    "guide_scale": 40.0,
+    "diversity_scale": 10.0,
+    "sample_batch_size": 20,
+    "action_horizon": 14,
+    "mcmc_steps": 4,
+    "temperature": 1.0
+  },
+  "policy_type": "diffusion",
+  "policy_kwargs": {}
+}
+
