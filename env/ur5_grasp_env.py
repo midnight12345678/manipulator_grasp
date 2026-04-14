@@ -15,6 +15,7 @@ from manipulator_grasp.utils import mj
 
 
 class UR5GraspEnv:
+    NUM_ARM_JOINTS = 6
 
     def __init__(self, sim_hz: int = 500, show_gui: bool = True, camera_id: int = 0):
         self.sim_hz = sim_hz
@@ -119,8 +120,8 @@ class UR5GraspEnv:
     def get_obs(self):
         frames = self.render()
         return {
-            "joint_q": self.mj_data.qpos[:6].copy(),
-            "joint_dq": self.mj_data.qvel[:6].copy(),
+            "joint_q": self.mj_data.qpos[:self.NUM_ARM_JOINTS].copy(),
+            "joint_dq": self.mj_data.qvel[:self.NUM_ARM_JOINTS].copy(),
             "action": self.mj_data.ctrl.copy(),
             "rgb": frames["img"],
             "depth": frames["depth"],

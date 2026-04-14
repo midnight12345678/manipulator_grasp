@@ -50,7 +50,7 @@ def gradient_refinement(
     noise_scale: float = 1e-2,
 ) -> np.ndarray:
     if mcmc_steps < 1:
-        raise ValueError("mcmc_steps must be >= 1.")
+        raise ValueError("mcmc_steps must be at least 1.")
     refined = action_sequences.copy()
     for i in range(refined.shape[0]):
         for _ in range(mcmc_steps):

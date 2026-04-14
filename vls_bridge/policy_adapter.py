@@ -74,7 +74,7 @@ class TorchScriptPolicy:
         except ImportError as exc:
             raise ImportError("Torch backend requested but torch is not installed.") from exc
 
-        if checkpoint_path is None:
+        if not checkpoint_path:
             raise ValueError("checkpoint_path is required for backend='torchscript'.")
         self.torch = torch
         self.device = torch.device(device)
@@ -126,7 +126,7 @@ def build_policy_callable(
         return RandomPolicy(action_dim=action_dim)
     if backend == "torchscript":
         return TorchScriptPolicy(
-            checkpoint_path=checkpoint_path or "",
+            checkpoint_path=checkpoint_path,
             device=device,
             obs_keys=obs_keys,
             default_action_dim=action_dim,

@@ -38,7 +38,10 @@ class ActionMapper:
         joint_dim = min(self.cfg.arm_joint_dim, ctrl_dim)
 
         if cmd.shape[0] < joint_dim:
-            raise ValueError(f"Policy action dim {cmd.shape[0]} is smaller than required joint dim {joint_dim}.")
+            raise ValueError(
+                f"Policy action has {cmd.shape[0]} dims but requires at least {joint_dim} "
+                f"(arm_joint_dim={self.cfg.arm_joint_dim})."
+            )
 
         joint_cmd = cmd[:joint_dim]
         gripper_cmd = cmd[joint_dim] if cmd.shape[0] > joint_dim and ctrl_dim > joint_dim else None

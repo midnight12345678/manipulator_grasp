@@ -61,6 +61,8 @@ class VLSRunner:
 
         Note: gripper signal is assumed to be the last action dimension.
         """
+        if action_sequences.shape[-1] < 1:
+            raise ValueError("Expected action_sequences[..., A] with A >= 1.")
         target_depth = float(context.guidance.get("target_depth", 0.0))
         gripper = action_sequences[:, :, -1]
         close_reward = np.mean(gripper, axis=1) * GRIPPER_CLOSE_WEIGHT
