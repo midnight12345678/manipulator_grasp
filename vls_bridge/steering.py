@@ -6,17 +6,20 @@ import numpy as np
 
 
 RewardFn = Callable[[np.ndarray, Dict], np.ndarray]
+RBF_VARIANCE_SCALE = 2.0
+RBF_MIN_VARIANCE = 1e-8
+MIN_WEIGHT = 1e-12
 
 
 def rbf_diversity_bonus(action_sequences: np.ndarray, sigma: float = 1.0) -> np.ndarray:
     flat = action_sequences.reshape(action_sequences.shape[0], -1)
     sq_norm = np.sum((flat[:, None, :] - flat[None, :, :]) ** 2, axis=-1)
-    kernel = np.exp(-sq_norm / max(2 * sigma ** 2, 1e-8))
+    kernel = np.exp(-sq_norm / max(RBF_VARIANCE_SCALE * sigma ** 2, RBF_MIN_VARIANCE))
     return 1.0 - np.mean(kernel, axis=1)
 
 
 def feynman_kac_resample(action_sequences: np.ndarray, weights: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    weights = np.maximum(weights, 1e-12)
+    weights = np.maximum(weights, MIN_WEIGHT)
     weights = weights / np.sum(weights)
     idx = rng.choice(len(action_sequences), size=len(action_sequences), p=weights, replace=True)
     return action_sequences[idx]
@@ -24,14 +27,14 @@ def feynman_kac_resample(action_sequences: np.ndarray, weights: np.ndarray, rng:
 
 def finite_diff_gradient(actions: np.ndarray, reward_fn: RewardFn, context: Dict, eps: float = 1e-3) -> np.ndarray:
     base = reward_fn(actions[None, ...], context)[0]
-    grad = np.zeros_like(actions)
-    for t in range(actions.shape[0]):
-        for a in range(actions.shape[1]):
-            perturbed = actions.copy()
-            perturbed[t, a] += eps
-            value = reward_fn(perturbed[None, ...], context)[0]
-            grad[t, a] = (value - base) / eps
-    return grad
+    t, a = actions.shape
+    total = t * a
+    perturbed = np.repeat(actions[None, ...], total, axis=0)
+    t_idx = np.repeat(np.arange(t), a)
+    a_idx = np.tile(np.arange(a), t)
+    perturbed[np.arange(total), t_idx, a_idx] += eps
+    values = reward_fn(perturbed, context)
+    return ((values - base) / eps).reshape(t, a)
 
 
 def gradient_refinement(
@@ -49,4 +52,3 @@ def gradient_refinement(
             grad = finite_diff_gradient(refined[i], reward_fn, context)
             refined[i] = refined[i] + guide_scale * grad + np.random.randn(*grad.shape) * noise_scale
     return refined
-

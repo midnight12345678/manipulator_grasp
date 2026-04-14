@@ -10,6 +10,10 @@ from .env_adapter import MujocoEnvAdapter
 from .policy_adapter import PolicyAdapter
 from .steering import feynman_kac_resample, gradient_refinement, rbf_diversity_bonus
 
+GRIPPER_CLOSE_WEIGHT = 1e-3
+SMOOTHNESS_PENALTY_WEIGHT = 0.1
+GUIDE_SCALE_MULTIPLIER = 1e-3
+
 
 @dataclass
 class GuidanceContext:
@@ -51,10 +55,10 @@ class VLSRunner:
     def _score_actions(action_sequences: np.ndarray, context: GuidanceContext) -> np.ndarray:
         target_depth = float(context.guidance.get("target_depth", 0.0))
         gripper = action_sequences[:, :, -1]
-        close_reward = np.mean(gripper, axis=1) * 0.001
+        close_reward = np.mean(gripper, axis=1) * GRIPPER_CLOSE_WEIGHT
         smooth_penalty = np.mean(np.linalg.norm(np.diff(action_sequences, axis=1), axis=-1), axis=1)
         depth_term = -abs(target_depth)
-        return close_reward - 0.1 * smooth_penalty + depth_term
+        return close_reward - SMOOTHNESS_PENALTY_WEIGHT * smooth_penalty + depth_term
 
     def _guided_actions(self, obs: Dict[str, Any], guidance: Dict[str, Any]) -> np.ndarray:
         gcfg = self.guidance_cfg
@@ -66,7 +70,7 @@ class VLSRunner:
                 candidates,
                 lambda arr, _: self._score_actions(arr, context),
                 {"guidance": guidance},
-                guide_scale=gcfg.guide_scale * 1e-3,
+                guide_scale=gcfg.guide_scale * GUIDE_SCALE_MULTIPLIER,
                 mcmc_steps=gcfg.mcmc_steps,
             )
 
@@ -92,4 +96,3 @@ class VLSRunner:
             executed.append(action.copy())
 
         return {"steps": len(executed), "actions": np.asarray(executed), "guidance": guidance}
-

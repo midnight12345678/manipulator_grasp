@@ -29,8 +29,7 @@
 3. 运行：
 
 ```bash
-python /home/runner/work/manipulator_grasp/manipulator_grasp/vls_mujoco_runner.py \
-  --config /home/runner/work/manipulator_grasp/manipulator_grasp/vls_config.example.json
+python vls_mujoco_runner.py --config vls_config.example.json
 ```
 
 ## 接口约定
@@ -55,4 +54,3 @@ python /home/runner/work/manipulator_grasp/manipulator_grasp/vls_mujoco_runner.p
   - 真实 VLM（OpenAI/Anthropic 等）
   - 关键点检测与时序跟踪模块
   - 你的预训练扩散模型或 Pi 模型权重与前后处理
-

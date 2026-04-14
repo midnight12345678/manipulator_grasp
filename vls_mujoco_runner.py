@@ -18,7 +18,7 @@ class RandomPolicy:
         self.action_dim = action_dim
 
     def __call__(self, obs: Dict[str, Any], horizon: int, batch_size: int) -> np.ndarray:
-        _ = obs
+        del obs
         return np.random.uniform(-1.0, 1.0, size=(batch_size, horizon, self.action_dim)).astype(np.float32)
 
 
@@ -52,4 +52,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
