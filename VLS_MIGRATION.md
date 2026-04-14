@@ -28,6 +28,7 @@
 1. 在配置中选择策略后端：
    - `backend: "random"`：随机策略（用于联调流程）
    - `backend: "torchscript"`：加载 TorchScript 文件
+   - `backend: "lerobot_pi05"`：直接加载 HuggingFace `lerobot/pi05_base`
    - `backend: "factory"`：通过 `module.sub:build_fn` 注入你自己的模型加载逻辑
 2. 配置动作映射：
    - `action_mode`: `joint_delta` 或 `joint_absolute`
@@ -37,6 +38,19 @@
 
 ```bash
 python vls_mujoco_runner.py --config vls_config.example.json
+```
+
+### pi0.5 基础模型（你当前选择）
+
+示例配置已默认切换为：
+- `policy_type: "pi"`
+- `backend: "lerobot_pi05"`
+- `checkpoint_path: "lerobot/pi05_base"`
+
+运行前请确保安装 `torch` 与 `lerobot`：
+
+```bash
+pip install torch lerobot
 ```
 
 ## 接口约定

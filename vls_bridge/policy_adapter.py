@@ -110,6 +110,108 @@ class TorchScriptPolicy:
             return output
 
 
+class LeRobotPI05Policy:
+    def __init__(
+        self,
+        checkpoint_path: str,
+        *,
+        device: str = "cpu",
+        task: str = "",
+        image_key: Optional[str] = None,
+    ):
+        if not checkpoint_path:
+            raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot_pi05'.")
+        try:
+            import torch
+            from lerobot.policies.factory import get_policy_class
+            from lerobot.processor import PolicyProcessorPipeline
+            from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
+        except ImportError as exc:
+            raise ImportError("backend='lerobot_pi05' requires installing lerobot and torch.") from exc
+
+        self.torch = torch
+        self.ACTION = ACTION
+        self.OBS_IMAGES = OBS_IMAGES
+        self.OBS_STATE = OBS_STATE
+        self.task = task
+        self.image_key_override = image_key
+        self.policy = get_policy_class("pi05").from_pretrained(checkpoint_path)
+        self.policy.eval()
+        if hasattr(self.policy, "to"):
+            self.policy.to(device)
+
+        self.preprocessor = None
+        self.postprocessor = None
+        try:
+            self.preprocessor = PolicyProcessorPipeline.from_pretrained(
+                checkpoint_path, config_filename="preprocessor_config.json"
+            )
+        except Exception:
+            self.preprocessor = None
+        try:
+            self.postprocessor = PolicyProcessorPipeline.from_pretrained(
+                checkpoint_path, config_filename="postprocessor_config.json"
+            )
+        except Exception:
+            self.postprocessor = None
+
+        cfg_input = getattr(self.policy.config, "input_features", {}) or {}
+        image_keys = [k for k in cfg_input.keys() if k.startswith(f"{OBS_IMAGES}.")]
+        self.state_key = self.OBS_STATE if self.OBS_STATE in cfg_input or not cfg_input else self.OBS_STATE
+        self.image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
+
+    def _to_numpy(self, value: Any) -> np.ndarray:
+        if hasattr(value, "detach"):
+            value = value.detach().cpu().numpy()
+        return np.asarray(value, dtype=np.float32)
+
+    def _build_raw_batch(self, obs: Dict[str, Any]) -> Dict[str, Any]:
+        if "proprio" not in obs:
+            raise ValueError("LeRobot PI05 backend requires obs['proprio'].")
+        batch: Dict[str, Any] = {self.state_key: np.asarray(obs["proprio"], dtype=np.float32)}
+        if "rgb" in obs and obs["rgb"] is not None:
+            batch[self.image_key] = np.asarray(obs["rgb"])
+        task_text = str(obs.get("instruction", self.task))
+        if task_text:
+            batch["task"] = task_text
+        return batch
+
+    def _predict_chunk(self, obs: Dict[str, Any], horizon: int) -> np.ndarray:
+        raw_batch = self._build_raw_batch(obs)
+        policy_batch = self.preprocessor(raw_batch) if self.preprocessor is not None else raw_batch
+        with self.torch.no_grad():
+            if hasattr(self.policy, "predict_action_chunk"):
+                actions = self.policy.predict_action_chunk(policy_batch)
+            else:
+                action = self.policy.select_action(policy_batch)
+                action_np = self._to_numpy(action)
+                if action_np.ndim == 1:
+                    action_np = action_np[None, :]
+                return np.repeat(action_np[:, None, :], horizon, axis=1)
+
+        if self.postprocessor is not None:
+            processed = self.postprocessor(actions)
+            if isinstance(processed, dict) and self.ACTION in processed:
+                actions = processed[self.ACTION]
+            else:
+                actions = processed
+
+        actions_np = self._to_numpy(actions)
+        if actions_np.ndim == 2:
+            actions_np = actions_np[:, None, :]
+        if actions_np.shape[1] < horizon:
+            pad = np.repeat(actions_np[:, -1:, :], horizon - actions_np.shape[1], axis=1)
+            actions_np = np.concatenate([actions_np, pad], axis=1)
+        return actions_np[:, :horizon, :]
+
+    def __call__(self, obs: Dict[str, Any], horizon: int, batch_size: int) -> np.ndarray:
+        chunks = []
+        for _ in range(batch_size):
+            chunk = self._predict_chunk(obs, horizon)
+            chunks.append(chunk[0])
+        return np.stack(chunks, axis=0).astype(np.float32)
+
+
 def build_policy_callable(
     backend: str,
     *,
@@ -130,6 +232,13 @@ def build_policy_callable(
             device=device,
             obs_keys=obs_keys,
             default_action_dim=action_dim,
+        )
+    if backend == "lerobot_pi05":
+        return LeRobotPI05Policy(
+            checkpoint_path=checkpoint_path or "lerobot/pi05_base",
+            device=device,
+            task=(extra_kwargs or {}).get("task", ""),
+            image_key=(extra_kwargs or {}).get("image_key"),
         )
     if backend == "factory":
         if not factory:

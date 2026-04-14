@@ -72,7 +72,9 @@ class VLSRunner:
 
     def _guided_actions(self, obs: Dict[str, Any], guidance: Dict[str, Any]) -> np.ndarray:
         gcfg = self.guidance_cfg
-        candidates = self.policy.sample_action_sequences(obs, gcfg.action_horizon, gcfg.sample_batch_size)
+        policy_obs = dict(obs)
+        policy_obs["instruction"] = self.runtime_cfg.instruction
+        candidates = self.policy.sample_action_sequences(policy_obs, gcfg.action_horizon, gcfg.sample_batch_size)
         context = GuidanceContext(self.runtime_cfg.instruction, guidance, obs)
 
         if gcfg.use_guidance:
