@@ -15,9 +15,12 @@ from manipulator_grasp.utils import mj
 
 
 class UR5GraspEnv:
+    NUM_ARM_JOINTS = 6
 
-    def __init__(self):
-        self.sim_hz = 500
+    def __init__(self, sim_hz: int = 500, show_gui: bool = True, camera_id: int = 0):
+        self.sim_hz = sim_hz
+        self.show_gui = show_gui
+        self.camera_id = camera_id
 
         self.mj_model: mujoco.MjModel = None
         self.mj_data: mujoco.MjData = None
@@ -36,6 +39,8 @@ class UR5GraspEnv:
         self.camera_matrix = np.eye(3)
         self.camera_matrix_inv = np.eye(3)
         self.num_points = 4096
+        self.ctrl_low = None
+        self.ctrl_high = None
 
     def reset(self):
         filename = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'scenes', 'scene.xml')
@@ -58,10 +63,20 @@ class UR5GraspEnv:
 
         self.mj_renderer = mujoco.renderer.Renderer(self.mj_model, height=self.height, width=self.width)
         self.mj_depth_renderer = mujoco.renderer.Renderer(self.mj_model, height=self.height, width=self.width)
-        self.mj_renderer.update_scene(self.mj_data, 0)
-        self.mj_depth_renderer.update_scene(self.mj_data, 0)
+        self.mj_renderer.update_scene(self.mj_data, self.camera_id)
+        self.mj_depth_renderer.update_scene(self.mj_data, self.camera_id)
         self.mj_depth_renderer.enable_depth_rendering()
-        self.mj_viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data)
+        if self.show_gui:
+            self.mj_viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data)
+        else:
+            self.mj_viewer = None
+
+        if self.mj_model.actuator_ctrlrange is not None and len(self.mj_model.actuator_ctrlrange) > 0:
+            self.ctrl_low = self.mj_model.actuator_ctrlrange[:, 0].copy()
+            self.ctrl_high = self.mj_model.actuator_ctrlrange[:, 1].copy()
+        else:
+            self.ctrl_low = None
+            self.ctrl_high = None
 
         self.camera_matrix = np.array([
             [self.height / (2.0 * np.tan(self.fovy / 2.0)), 0.0, self.width / 2.0],
@@ -85,18 +100,36 @@ class UR5GraspEnv:
 
     def step(self, action=None):
         if action is not None:
+            action = np.asarray(action, dtype=float)
+            if self.ctrl_low is not None and self.ctrl_high is not None:
+                action = np.clip(action, self.ctrl_low, self.ctrl_high)
             self.mj_data.ctrl[:] = action
         mujoco.mj_step(self.mj_model, self.mj_data)
 
-        self.mj_viewer.sync()
+        if self.mj_viewer is not None:
+            self.mj_viewer.sync()
 
     def render(self):
-        self.mj_renderer.update_scene(self.mj_data, 0)
-        self.mj_depth_renderer.update_scene(self.mj_data, 0)
+        self.mj_renderer.update_scene(self.mj_data, self.camera_id)
+        self.mj_depth_renderer.update_scene(self.mj_data, self.camera_id)
         return {
             'img': self.mj_renderer.render(),
             'depth': self.mj_depth_renderer.render()
         }
+
+    def get_obs(self):
+        frames = self.render()
+        return {
+            "joint_q": self.mj_data.qpos[:self.NUM_ARM_JOINTS].copy(),
+            "joint_dq": self.mj_data.qvel[:self.NUM_ARM_JOINTS].copy(),
+            "action": self.mj_data.ctrl.copy(),
+            "rgb": frames["img"],
+            "depth": frames["depth"],
+        }
+
+    def get_camera_image(self):
+        frames = self.render()
+        return frames["img"], frames["depth"]
 
 
 if __name__ == '__main__':

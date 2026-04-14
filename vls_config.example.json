@@ -1,0 +1,42 @@
+{
+  "runtime": {
+    "instruction": "grasp the red object and place it on the right side",
+    "episode_steps": 150,
+    "show_gui": false,
+    "camera_id": 0,
+    "sim_hz": 500
+  },
+  "guidance": {
+    "use_guidance": true,
+    "guide_scale": 40.0,
+    "diversity_scale": 10.0,
+    "sample_batch_size": 20,
+    "action_horizon": 14,
+    "mcmc_steps": 4,
+    "temperature": 1.0
+  },
+  "policy": {
+    "policy_type": "pi",
+    "backend": "lerobot_pi05",
+    "checkpoint_path": "lerobot/pi05_base",
+    "factory": null,
+    "device": "cpu",
+    "action_dim": 7,
+    "obs_keys": [
+      "proprio",
+      "action"
+    ],
+    "extra_kwargs": {
+      "policy_name": "pi05",
+      "image_key": "observation.images.main"
+    }
+  },
+  "action_mapping": {
+    "arm_joint_dim": 6,
+    "action_mode": "joint_delta",
+    "input_normalized": true,
+    "joint_delta_scale": 0.05,
+    "gripper_mode": "absolute",
+    "gripper_delta_scale": 10.0
+  }
+}
