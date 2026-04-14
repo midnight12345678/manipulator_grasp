@@ -45,6 +45,14 @@ class MujocoEnvAdapter:
     def get_camera_image(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.env.get_camera_image()
 
+    @property
+    def action_dim(self) -> int:
+        if self.env.mj_data is None:
+            raise RuntimeError("Environment is not initialized. Call reset() first.")
+        return int(self.env.mj_data.ctrl.shape[0])
+
+    def get_action_bounds(self) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        return self.env.ctrl_low, self.env.ctrl_high
+
     def close(self) -> None:
         self.env.close()
-

@@ -15,7 +15,24 @@
     "mcmc_steps": 4,
     "temperature": 1.0
   },
-  "policy_type": "diffusion",
-  "policy_kwargs": {}
+  "policy": {
+    "policy_type": "diffusion",
+    "backend": "random",
+    "checkpoint_path": null,
+    "factory": null,
+    "device": "cpu",
+    "action_dim": 7,
+    "obs_keys": [
+      "proprio",
+      "action"
+    ],
+    "extra_kwargs": {}
+  },
+  "action_mapping": {
+    "action_mode": "joint_delta",
+    "input_normalized": true,
+    "joint_delta_scale": 0.05,
+    "gripper_mode": "absolute",
+    "gripper_delta_scale": 10.0
+  }
 }
-

@@ -1,3 +1,3 @@
-from .config import VLSConfig, GuidanceConfig, RuntimeConfig
+from .config import VLSConfig, GuidanceConfig, RuntimeConfig, PolicyConfig, ActionMappingConfig
 
-__all__ = ["VLSConfig", "GuidanceConfig", "RuntimeConfig"]
+__all__ = ["VLSConfig", "GuidanceConfig", "RuntimeConfig", "PolicyConfig", "ActionMappingConfig"]

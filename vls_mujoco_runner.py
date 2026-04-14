@@ -1,30 +1,25 @@
 from __future__ import annotations
 
 import argparse
-from typing import Any, Dict
-
-import numpy as np
 
 from vls_bridge.config import VLSConfig
 from vls_bridge.env_adapter import MujocoEnvAdapter
-from vls_bridge.policy_adapter import DiffusionPolicyAdapter, PiPolicyAdapter
+from vls_bridge.policy_adapter import DiffusionPolicyAdapter, PiPolicyAdapter, build_policy_callable
 from vls_bridge.task_runner import VLSRunner
 
 
-class RandomPolicy:
-    """Drop-in placeholder. Replace with your pretrained diffusion/Pi model wrapper."""
-
-    def __init__(self, action_dim: int = 7):
-        self.action_dim = action_dim
-
-    def __call__(self, obs: Dict[str, Any], horizon: int, batch_size: int) -> np.ndarray:
-        del obs
-        return np.random.uniform(-1.0, 1.0, size=(batch_size, horizon, self.action_dim)).astype(np.float32)
-
-
-def build_policy_adapter(policy_type: str):
-    base_policy = RandomPolicy()
-    if policy_type.lower() == "pi":
+def build_policy_adapter(cfg: VLSConfig):
+    policy_cfg = cfg.policy
+    base_policy = build_policy_callable(
+        backend=policy_cfg.backend,
+        action_dim=policy_cfg.action_dim,
+        checkpoint_path=policy_cfg.checkpoint_path,
+        factory=policy_cfg.factory,
+        device=policy_cfg.device,
+        obs_keys=policy_cfg.obs_keys,
+        extra_kwargs=policy_cfg.extra_kwargs,
+    )
+    if policy_cfg.policy_type.lower() == "pi":
         return PiPolicyAdapter(base_policy)
     return DiffusionPolicyAdapter(base_policy)
 
@@ -40,8 +35,8 @@ def main():
         show_gui=cfg.runtime.show_gui,
         camera_id=cfg.runtime.camera_id,
     )
-    policy = build_policy_adapter(cfg.policy_type)
-    runner = VLSRunner(env, policy, cfg.runtime, cfg.guidance)
+    policy = build_policy_adapter(cfg)
+    runner = VLSRunner(env, policy, cfg.runtime, cfg.guidance, cfg.action_mapping)
 
     try:
         result = runner.run_episode()

@@ -6,6 +6,15 @@ from typing import Any, Dict, Optional
 
 
 @dataclass
+class ActionMappingConfig:
+    action_mode: str = "joint_delta"
+    input_normalized: bool = True
+    joint_delta_scale: float = 0.05
+    gripper_mode: str = "absolute"
+    gripper_delta_scale: float = 10.0
+
+
+@dataclass
 class GuidanceConfig:
     use_guidance: bool = True
     guide_scale: float = 40.0
@@ -26,21 +35,41 @@ class RuntimeConfig:
 
 
 @dataclass
+class PolicyConfig:
+    policy_type: str = "diffusion"
+    backend: str = "random"
+    checkpoint_path: Optional[str] = None
+    factory: Optional[str] = None
+    device: str = "cpu"
+    action_dim: int = 7
+    obs_keys: Optional[list] = None
+    extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class VLSConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     guidance: GuidanceConfig = field(default_factory=GuidanceConfig)
-    policy_type: str = "diffusion"
-    policy_kwargs: Dict[str, Any] = field(default_factory=dict)
+    policy: PolicyConfig = field(default_factory=PolicyConfig)
+    action_mapping: ActionMappingConfig = field(default_factory=ActionMappingConfig)
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "VLSConfig":
         runtime = RuntimeConfig(**data.get("runtime", {}))
         guidance = GuidanceConfig(**data.get("guidance", {}))
+        raw_policy = data.get("policy", {})
+        if not raw_policy:
+            raw_policy = {
+                "policy_type": data.get("policy_type", "diffusion"),
+                **data.get("policy_kwargs", {}),
+            }
+        policy = PolicyConfig(**raw_policy)
+        action_mapping = ActionMappingConfig(**data.get("action_mapping", {}))
         return VLSConfig(
             runtime=runtime,
             guidance=guidance,
-            policy_type=data.get("policy_type", "diffusion"),
-            policy_kwargs=data.get("policy_kwargs", {}),
+            policy=policy,
+            action_mapping=action_mapping,
         )
 
     @staticmethod
@@ -56,4 +85,3 @@ class VLSConfig:
         else:
             data = json.loads(raw)
         return VLSConfig.from_dict(data or {})
-

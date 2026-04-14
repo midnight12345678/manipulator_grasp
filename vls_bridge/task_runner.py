@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
+from .action_mapping import ActionMapper, ActionMappingConfig
 from .config import GuidanceConfig, RuntimeConfig
 from .env_adapter import MujocoEnvAdapter
 from .policy_adapter import PolicyAdapter
@@ -42,12 +43,14 @@ class VLSRunner:
         policy: PolicyAdapter,
         runtime_cfg: RuntimeConfig,
         guidance_cfg: GuidanceConfig,
+        action_mapping_cfg: Optional[ActionMappingConfig] = None,
         guidance_provider: Optional[SimpleGuidanceProvider] = None,
     ):
         self.env = env
         self.policy = policy
         self.runtime_cfg = runtime_cfg
         self.guidance_cfg = guidance_cfg
+        self.action_mapper = ActionMapper(action_mapping_cfg or ActionMappingConfig())
         self.guidance_provider = guidance_provider or SimpleGuidanceProvider()
         self.rng = np.random.default_rng()
 
@@ -90,7 +93,8 @@ class VLSRunner:
         executed = []
         for _ in range(self.runtime_cfg.episode_steps):
             plan = self._guided_actions(obs, guidance)
-            action = plan[0]
+            ctrl_low, ctrl_high = self.env.get_action_bounds()
+            action = self.action_mapper.map_first_action(plan[0], obs["action"], ctrl_low, ctrl_high)
             result = self.env.step(action)
             obs = result.obs
             executed.append(action.copy())
