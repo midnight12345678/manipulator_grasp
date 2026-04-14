@@ -27,7 +27,7 @@
       "action"
     ],
     "extra_kwargs": {
-      "task": "grasp the red object and place it on the right side",
+      "policy_name": "pi05",
       "image_key": "observation.images.main"
     }
   },

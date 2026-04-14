@@ -46,6 +46,7 @@ python vls_mujoco_runner.py --config vls_config.example.json
 - `policy_type: "pi"`
 - `backend: "lerobot_pi05"`
 - `checkpoint_path: "lerobot/pi05_base"`
+- 语言任务直接复用 `runtime.instruction`（无需在 `policy.extra_kwargs` 重复配置）
 
 运行前请确保安装 `torch` 与 `lerobot`：
 

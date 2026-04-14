@@ -118,6 +118,7 @@ class LeRobotPI05Policy:
         device: str = "cpu",
         task: str = "",
         image_key: Optional[str] = None,
+        policy_name: str = "pi05",
     ):
         if not checkpoint_path:
             raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot_pi05'.")
@@ -135,7 +136,7 @@ class LeRobotPI05Policy:
         self.OBS_STATE = OBS_STATE
         self.task = task
         self.image_key_override = image_key
-        self.policy = get_policy_class("pi05").from_pretrained(checkpoint_path)
+        self.policy = get_policy_class(policy_name).from_pretrained(checkpoint_path)
         self.policy.eval()
         if hasattr(self.policy, "to"):
             self.policy.to(device)
@@ -146,13 +147,13 @@ class LeRobotPI05Policy:
             self.preprocessor = PolicyProcessorPipeline.from_pretrained(
                 checkpoint_path, config_filename="preprocessor_config.json"
             )
-        except Exception:
+        except (FileNotFoundError, OSError, ValueError, RuntimeError):
             self.preprocessor = None
         try:
             self.postprocessor = PolicyProcessorPipeline.from_pretrained(
                 checkpoint_path, config_filename="postprocessor_config.json"
             )
-        except Exception:
+        except (FileNotFoundError, OSError, ValueError, RuntimeError):
             self.postprocessor = None
 
         cfg_input = getattr(self.policy.config, "input_features", {}) or {}
@@ -239,6 +240,7 @@ def build_policy_callable(
             device=device,
             task=(extra_kwargs or {}).get("task", ""),
             image_key=(extra_kwargs or {}).get("image_key"),
+            policy_name=(extra_kwargs or {}).get("policy_name", "pi05"),
         )
     if backend == "factory":
         if not factory:

@@ -65,10 +65,10 @@ class VLSRunner:
             raise ValueError("Expected action_sequences[..., A] with A >= 1.")
         target_depth = float(context.guidance.get("target_depth", 0.0))
         gripper = action_sequences[:, :, -1]
-        close_reward = np.mean(gripper, axis=1) * GRIPPER_CLOSE_WEIGHT
+        gripper_signal_mean = np.mean(gripper, axis=1) * GRIPPER_CLOSE_WEIGHT
         smooth_penalty = np.mean(np.linalg.norm(np.diff(action_sequences, axis=1), axis=-1), axis=1)
         depth_term = -abs(target_depth)
-        return close_reward - SMOOTHNESS_PENALTY_WEIGHT * smooth_penalty + depth_term
+        return gripper_signal_mean - SMOOTHNESS_PENALTY_WEIGHT * smooth_penalty + depth_term
 
     def _guided_actions(self, obs: Dict[str, Any], guidance: Dict[str, Any]) -> np.ndarray:
         gcfg = self.guidance_cfg
