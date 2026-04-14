@@ -147,7 +147,9 @@ def build_policy_callable(
 
 class DiffusionPolicyAdapter(CallablePolicyAdapter):
     """Semantic adapter for diffusion-style policies using the unified callable contract."""
+    pass
 
 
 class PiPolicyAdapter(CallablePolicyAdapter):
     """Semantic adapter for Pi-family policies using the unified callable contract."""
+    pass
