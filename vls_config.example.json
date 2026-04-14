@@ -29,6 +29,7 @@
     "extra_kwargs": {}
   },
   "action_mapping": {
+    "arm_joint_dim": 6,
     "action_mode": "joint_delta",
     "input_normalized": true,
     "joint_delta_scale": 0.05,

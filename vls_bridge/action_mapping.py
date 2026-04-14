@@ -5,9 +5,12 @@ from typing import Optional
 
 import numpy as np
 
+DEFAULT_ARM_JOINT_DOF = 6
+
 
 @dataclass
 class ActionMappingConfig:
+    arm_joint_dim: int = DEFAULT_ARM_JOINT_DOF
     action_mode: str = "joint_delta"
     input_normalized: bool = True
     joint_delta_scale: float = 0.05
@@ -32,7 +35,7 @@ class ActionMapper:
         mapped = current_ctrl.copy()
         cmd = np.asarray(policy_action, dtype=np.float32).copy()
         ctrl_dim = mapped.shape[0]
-        joint_dim = min(6, ctrl_dim)
+        joint_dim = min(self.cfg.arm_joint_dim, ctrl_dim)
 
         if cmd.shape[0] < joint_dim:
             raise ValueError(f"Policy action dim {cmd.shape[0]} is smaller than required joint dim {joint_dim}.")
@@ -70,4 +73,3 @@ class ActionMapper:
         if ctrl_low is not None and ctrl_high is not None:
             mapped = np.clip(mapped, ctrl_low, ctrl_high)
         return mapped
-

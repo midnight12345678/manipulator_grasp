@@ -57,7 +57,10 @@ class VLSRunner:
 
     @staticmethod
     def _score_actions(action_sequences: np.ndarray, context: GuidanceContext) -> np.ndarray:
-        """Score candidate action sequences and return one scalar score per sequence."""
+        """Score candidate action sequences and return one scalar score per sequence.
+
+        Note: gripper signal is assumed to be the last action dimension.
+        """
         target_depth = float(context.guidance.get("target_depth", 0.0))
         gripper = action_sequences[:, :, -1]
         close_reward = np.mean(gripper, axis=1) * GRIPPER_CLOSE_WEIGHT
