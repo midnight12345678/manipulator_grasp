@@ -147,19 +147,19 @@ class LeRobotPI05Policy:
             self.preprocessor = PolicyProcessorPipeline.from_pretrained(
                 checkpoint_path, config_filename="preprocessor_config.json"
             )
-        except (FileNotFoundError, OSError, ValueError, RuntimeError):
+        except (FileNotFoundError, OSError):
             self.preprocessor = None
         try:
             self.postprocessor = PolicyProcessorPipeline.from_pretrained(
                 checkpoint_path, config_filename="postprocessor_config.json"
             )
-        except (FileNotFoundError, OSError, ValueError, RuntimeError):
+        except (FileNotFoundError, OSError):
             self.postprocessor = None
 
         cfg_input = getattr(self.policy.config, "input_features", {}) or {}
         image_keys = [k for k in cfg_input.keys() if k.startswith(f"{OBS_IMAGES}.")]
         self.state_key = self.OBS_STATE if self.OBS_STATE in cfg_input or not cfg_input else self.OBS_STATE
-        self.image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
+        self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
 
     def _to_numpy(self, value: Any) -> np.ndarray:
         if hasattr(value, "detach"):
@@ -171,7 +171,7 @@ class LeRobotPI05Policy:
             raise ValueError("LeRobot PI05 backend requires obs['proprio'].")
         batch: Dict[str, Any] = {self.state_key: np.asarray(obs["proprio"], dtype=np.float32)}
         if "rgb" in obs and obs["rgb"] is not None:
-            batch[self.image_key] = np.asarray(obs["rgb"])
+            batch[self.resolved_image_key] = np.asarray(obs["rgb"])
         task_text = str(obs.get("instruction", self.task))
         if task_text:
             batch["task"] = task_text
@@ -238,9 +238,9 @@ def build_policy_callable(
         return LeRobotPI05Policy(
             checkpoint_path=checkpoint_path or "lerobot/pi05_base",
             device=device,
-            task=(extra_kwargs or {}).get("task", ""),
-            image_key=(extra_kwargs or {}).get("image_key"),
-            policy_name=(extra_kwargs or {}).get("policy_name", "pi05"),
+            task=extra_kwargs.get("task", ""),
+            image_key=extra_kwargs.get("image_key"),
+            policy_name=extra_kwargs.get("policy_name", "pi05"),
         )
     if backend == "factory":
         if not factory:

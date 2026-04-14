@@ -16,7 +16,7 @@ MIN_WEIGHT = 1e-12
 def rbf_diversity_bonus(action_sequences: np.ndarray, sigma: float = 1.0) -> np.ndarray:
     flat = action_sequences.reshape(action_sequences.shape[0], -1)
     sq_norm = np.sum((flat[:, None, :] - flat[None, :, :]) ** 2, axis=-1)
-    kernel = np.exp(-sq_norm / max(RBF_VARIANCE_SCALE * sigma ** 2, RBF_MIN_VARIANCE))
+    kernel = np.exp(-sq_norm / max(RBF_VARIANCE_SCALE * (sigma ** 2), RBF_MIN_VARIANCE))
     return 1.0 - np.mean(kernel, axis=1)
 
 
