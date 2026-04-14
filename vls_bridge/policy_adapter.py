@@ -110,9 +110,16 @@ class TorchScriptPolicy:
             return output
 
 
-def build_policy_callable(backend: str, *, action_dim: int = 7, checkpoint_path: Optional[str] = None,
-                          factory: Optional[str] = None, device: str = "cpu", obs_keys: Optional[Iterable[str]] = None,
-                          extra_kwargs: Optional[Dict[str, Any]] = None) -> Any:
+def build_policy_callable(
+    backend: str,
+    *,
+    action_dim: int = 7,
+    checkpoint_path: Optional[str] = None,
+    factory: Optional[str] = None,
+    device: str = "cpu",
+    obs_keys: Optional[Iterable[str]] = None,
+    extra_kwargs: Optional[Dict[str, Any]] = None,
+) -> Any:
     extra_kwargs = extra_kwargs or {}
     backend = backend.lower()
     if backend == "random":
@@ -144,4 +151,3 @@ class DiffusionPolicyAdapter(CallablePolicyAdapter):
 
 class PiPolicyAdapter(CallablePolicyAdapter):
     """Adapter for Pi-family policies."""
-

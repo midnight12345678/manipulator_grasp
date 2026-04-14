@@ -11,6 +11,7 @@ from .env_adapter import MujocoEnvAdapter
 from .policy_adapter import PolicyAdapter
 from .steering import feynman_kac_resample, gradient_refinement, rbf_diversity_bonus
 
+# Default heuristic weights; keep in one place for easy tuning.
 GRIPPER_CLOSE_WEIGHT = 1e-3
 SMOOTHNESS_PENALTY_WEIGHT = 0.1
 GUIDE_SCALE_MULTIPLIER = 1e-3
@@ -56,6 +57,7 @@ class VLSRunner:
 
     @staticmethod
     def _score_actions(action_sequences: np.ndarray, context: GuidanceContext) -> np.ndarray:
+        """Score candidate action sequences and return one scalar score per sequence."""
         target_depth = float(context.guidance.get("target_depth", 0.0))
         gripper = action_sequences[:, :, -1]
         close_reward = np.mean(gripper, axis=1) * GRIPPER_CLOSE_WEIGHT

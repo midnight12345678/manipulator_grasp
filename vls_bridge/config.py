@@ -4,14 +4,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-
-@dataclass
-class ActionMappingConfig:
-    action_mode: str = "joint_delta"
-    input_normalized: bool = True
-    joint_delta_scale: float = 0.05
-    gripper_mode: str = "absolute"
-    gripper_delta_scale: float = 10.0
+from .action_mapping import ActionMappingConfig
 
 
 @dataclass

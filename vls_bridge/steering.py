@@ -6,8 +6,10 @@ import numpy as np
 
 
 RewardFn = Callable[[np.ndarray, Dict], np.ndarray]
+# RBF kernel parameters for diversity regularization.
 RBF_VARIANCE_SCALE = 2.0
 RBF_MIN_VARIANCE = 1e-8
+# Numerical floor for particle weights before normalization.
 MIN_WEIGHT = 1e-12
 
 
@@ -26,6 +28,7 @@ def feynman_kac_resample(action_sequences: np.ndarray, weights: np.ndarray, rng:
 
 
 def finite_diff_gradient(actions: np.ndarray, reward_fn: RewardFn, context: Dict, eps: float = 1e-3) -> np.ndarray:
+    """Approximate d(reward)/d(actions) for one action sequence with vectorized finite differences."""
     base = reward_fn(actions[None, ...], context)[0]
     t, a = actions.shape
     total = t * a
