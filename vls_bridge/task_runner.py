@@ -130,8 +130,9 @@ class VLSRunner:
         np.savez_compressed(
             output_path,
             actions=np.asarray(actions, dtype=np.float32),
-            metadata_json=np.array([json.dumps(metadata, ensure_ascii=False)]),
         )
+        metadata_path = output_path.with_suffix(".json")
+        metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
     @staticmethod
     def _to_jsonable(value: Any) -> Any:

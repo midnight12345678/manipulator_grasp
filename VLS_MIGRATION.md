@@ -74,7 +74,7 @@ pip install -r requirements_vls.txt
 ## 系统复现（Reproducibility）
 
 - `runtime.seed` 控制采样/引导随机性，保证同配置可复现。
-- `runtime.save_rollout_path` 可导出每次 rollout（动作序列、引导信息、任务指令、种子）到 `npz`，用于回放与对比。
+- `runtime.save_rollout_path` 可导出每次 rollout 的动作序列到 `npz`，并同步写出同名 `json` 元数据（引导信息、任务指令、种子），用于回放与对比。
 - CLI 支持覆盖参数：
 
 ```bash
