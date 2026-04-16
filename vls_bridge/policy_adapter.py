@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import inspect
 from contextlib import nullcontext
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, Optional
@@ -123,7 +122,6 @@ class LeRobotPolicy:
         policy_name: str = "pi05",
         dtype: str = "auto",
         use_autocast: bool = True,
-        allow_non_strict_load: bool = True,
     ):
         if not checkpoint_path:
             raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot'.")
@@ -145,11 +143,7 @@ class LeRobotPolicy:
         self.inference_dtype = self._resolve_dtype(dtype)
         self.autocast_enabled = bool(use_autocast) and self.device.type == "cuda"
         policy_cls = get_policy_class(policy_name)
-        self.policy = self._load_policy(
-            policy_cls=policy_cls,
-            checkpoint_path=checkpoint_path,
-            allow_non_strict_load=allow_non_strict_load,
-        )
+        self.policy = self._load_policy(policy_cls=policy_cls, checkpoint_path=checkpoint_path)
         self.policy.eval()
         if hasattr(self.policy, "to"):
             try:
@@ -184,39 +178,16 @@ class LeRobotPolicy:
         self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
 
     @staticmethod
-    def _invoke_with_supported_kwargs(fn: Any, checkpoint_path: str, kwargs: Dict[str, Any]) -> Any:
+    def _load_policy(policy_cls: Any, checkpoint_path: str) -> Any:
         if not isinstance(checkpoint_path, str) or not checkpoint_path.strip():
             raise ValueError("checkpoint_path must be a non-empty string.")
-        signature = inspect.signature(fn)
-        params = signature.parameters
-        accepts_var_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
-        filtered_kwargs = {k: v for k, v in kwargs.items() if accepts_var_kwargs or k in params}
-        return fn(checkpoint_path, **filtered_kwargs)
-
-    def _load_policy(self, policy_cls: Any, checkpoint_path: str, allow_non_strict_load: bool) -> Any:
-        from_pretrained = policy_cls.from_pretrained
-        attempts = [{}]
-        if allow_non_strict_load:
-            attempts.extend(
-                [
-                    {"strict": False},
-                    {"load_strict": False},
-                    {"strict": False, "ignore_mismatched_sizes": True},
-                ]
-            )
-        errors = []
-        for kwargs in attempts:
-            try:
-                return self._invoke_with_supported_kwargs(from_pretrained, checkpoint_path, kwargs)
-            except (RuntimeError, ValueError, TypeError, OSError) as exc:
-                errors.append((kwargs, exc))
-        error_text = "\n".join([f"kwargs={kwargs}: {exc}" for kwargs, exc in errors])
-        raise RuntimeError(
-            "Failed to load LeRobot policy checkpoint. "
-            "If you are using a converted OpenPI PI0.5 checkpoint, try enabling "
-            "`policy.extra_kwargs.allow_non_strict_load=true` or use an official compatible checkpoint.\n"
-            f"Attempts:\n{error_text}"
-        ) from errors[-1][1]
+        try:
+            return policy_cls.from_pretrained(checkpoint_path)
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
+            raise RuntimeError(
+                "Failed to load LeRobot policy checkpoint via official from_pretrained interface. "
+                "Please ensure checkpoint_path points to a compatible official checkpoint."
+            ) from exc
 
     def _resolve_dtype(self, dtype_name: str):
         dtype_str = str(dtype_name or "auto").lower()
@@ -325,7 +296,6 @@ def build_policy_callable(
             policy_name=extra_kwargs.get("policy_name", "pi05"),
             dtype=extra_kwargs.get("dtype", "auto"),
             use_autocast=extra_kwargs.get("use_autocast", True),
-            allow_non_strict_load=extra_kwargs.get("allow_non_strict_load", True),
         )
     if backend == "factory":
         if not factory:

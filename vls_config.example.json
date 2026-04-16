@@ -34,8 +34,7 @@
       "policy_name": "pi05",
       "image_key": "observation.images.main",
       "dtype": "float16",
-      "use_autocast": true,
-      "allow_non_strict_load": true
+      "use_autocast": true
     }
   },
   "action_mapping": {

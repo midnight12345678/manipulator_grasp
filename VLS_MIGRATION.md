@@ -51,7 +51,7 @@ python vls_mujoco_runner.py --config vls_config.example.json
 - 若使用单卡 4090，建议在 `policy.extra_kwargs` 增加：
   - `dtype: "float16"`（降低显存占用）
   - `use_autocast: true`（推理时启用自动混合精度）
-  - `allow_non_strict_load: true`（对部分本地转换权重在缺失个别键时做兼容加载）
+  - 使用官方兼容的 checkpoint（通过官方 `from_pretrained` 直连加载）
 
 运行前请确保安装 `torch` 与 `lerobot`：
 
