@@ -179,6 +179,7 @@ class LeRobotPolicy:
 
         cfg_input = getattr(self.policy.config, "input_features", {}) or {}
         image_keys = [k for k in cfg_input.keys() if k.startswith(f"{OBS_IMAGES}.")]
+        # Pi0.5 policy输入约定为 `observation.state`，这里固定使用标准键，避免不同配置分支造成不一致。
         self.state_key = self.OBS_STATE
         self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
 
@@ -222,8 +223,8 @@ class LeRobotPolicy:
         if dtype_str == "auto":
             if self.device.type == "cuda":
                 try:
-                    major, _ = self.torch.cuda.get_device_capability(self.device)
-                except Exception:
+                    major, _minor = self.torch.cuda.get_device_capability(self.device)
+                except (RuntimeError, AssertionError, AttributeError, ValueError, TypeError):
                     major = 0
                 return self.torch.bfloat16 if major >= 8 else self.torch.float16
             return self.torch.float32
