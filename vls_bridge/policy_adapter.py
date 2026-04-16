@@ -122,6 +122,7 @@ class LeRobotPolicy:
         policy_name: str = "pi05",
         dtype: str = "auto",
         use_autocast: bool = True,
+        state_dim: Optional[int] = None,
     ):
         if not checkpoint_path:
             raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot'.")
@@ -176,6 +177,7 @@ class LeRobotPolicy:
         # Pi0.5 policy输入约定为 `observation.state`，这里固定使用标准键，避免不同配置分支造成不一致。
         self.state_key = self.OBS_STATE
         self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
+        self.expected_state_dim = state_dim if state_dim is not None else self._infer_state_dim(cfg_input, self.state_key)
 
     @staticmethod
     def _load_policy(policy_cls: Any, checkpoint_path: str) -> Any:
@@ -216,10 +218,77 @@ class LeRobotPolicy:
             value = value.detach().cpu().numpy()
         return np.asarray(value, dtype=np.float32)
 
+    @staticmethod
+    def _to_1d_float(value: Any) -> np.ndarray:
+        if value is None:
+            return np.zeros((0,), dtype=np.float32)
+        return np.asarray(value, dtype=np.float32).reshape(-1)
+
+    @staticmethod
+    def _extract_feature_dim(spec: Any) -> Optional[int]:
+        if spec is None:
+            return None
+        if isinstance(spec, (int, np.integer)):
+            return int(spec)
+        if isinstance(spec, dict):
+            for key in ("shape", "sizes", "size", "dim", "dimension"):
+                if key in spec:
+                    dim = LeRobotPolicy._extract_feature_dim(spec[key])
+                    if dim is not None:
+                        return dim
+            return None
+        if hasattr(spec, "shape"):
+            dim = LeRobotPolicy._extract_feature_dim(getattr(spec, "shape"))
+            if dim is not None:
+                return dim
+        if isinstance(spec, (list, tuple)):
+            dims = [int(v) for v in spec if isinstance(v, (int, np.integer))]
+            return dims[-1] if dims else None
+        return None
+
+    @classmethod
+    def _infer_state_dim(cls, input_features: Dict[str, Any], state_key: str) -> Optional[int]:
+        if not isinstance(input_features, dict) or state_key not in input_features:
+            return None
+        return cls._extract_feature_dim(input_features[state_key])
+
+    def _build_state_vector(self, obs: Dict[str, Any]) -> np.ndarray:
+        joint_q = self._to_1d_float(obs.get("joint_q"))
+        joint_dq = self._to_1d_float(obs.get("joint_dq"))
+        action = self._to_1d_float(obs.get("action"))
+        proprio = self._to_1d_float(obs.get("proprio"))
+
+        if joint_q.size > 0:
+            # Use physically meaningful state ordering first: arm joints + gripper command/state proxy.
+            core_parts = [joint_q]
+            if action.size > joint_q.size:
+                core_parts.append(action[joint_q.size:joint_q.size + 1])
+            core_state = np.concatenate(core_parts, axis=0)
+            extended_parts = [core_state]
+            if joint_dq.size > 0:
+                extended_parts.append(joint_dq)
+            if action.size > 0:
+                extended_parts.append(action)
+            extended_state = np.concatenate(extended_parts, axis=0)
+        elif proprio.size > 0:
+            core_state = proprio
+            extended_state = np.concatenate([proprio, action], axis=0) if action.size > 0 else proprio
+        else:
+            raise ValueError("LeRobot PI05 backend requires robot state in obs['joint_q'] or obs['proprio'].")
+
+        if self.expected_state_dim is None:
+            return core_state.astype(np.float32)
+        if self.expected_state_dim <= core_state.shape[0]:
+            return core_state[:self.expected_state_dim].astype(np.float32)
+        if self.expected_state_dim <= extended_state.shape[0]:
+            return extended_state[:self.expected_state_dim].astype(np.float32)
+        padded = np.zeros((self.expected_state_dim,), dtype=np.float32)
+        padded[:extended_state.shape[0]] = extended_state
+        return padded
+
     def _build_raw_batch(self, obs: Dict[str, Any]) -> Dict[str, Any]:
-        if "proprio" not in obs:
-            raise ValueError("LeRobot PI05 backend requires obs['proprio'].")
-        batch: Dict[str, Any] = {self.state_key: np.asarray(obs["proprio"], dtype=np.float32)}
+        state_vec = self._build_state_vector(obs)
+        batch: Dict[str, Any] = {self.state_key: state_vec}
         if "rgb" in obs and obs["rgb"] is not None:
             batch[self.resolved_image_key] = np.asarray(obs["rgb"])
         task_text = str(obs.get("instruction", self.task))
@@ -296,6 +365,7 @@ def build_policy_callable(
             policy_name=extra_kwargs.get("policy_name", "pi05"),
             dtype=extra_kwargs.get("dtype", "auto"),
             use_autocast=extra_kwargs.get("use_autocast", True),
+            state_dim=extra_kwargs.get("state_dim"),
         )
     if backend == "factory":
         if not factory:

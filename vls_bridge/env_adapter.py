@@ -35,11 +35,19 @@ class MujocoEnvAdapter:
 
     def get_obs(self) -> Dict:
         obs = self.env.get_obs()
+        joint_q = np.asarray(obs["joint_q"], dtype=np.float32).reshape(-1)
+        joint_dq = np.asarray(obs["joint_dq"], dtype=np.float32).reshape(-1)
+        action = np.asarray(obs["action"], dtype=np.float32).reshape(-1)
+        gripper_ctrl = float(action[joint_q.shape[0]]) if action.shape[0] > joint_q.shape[0] else None
         return {
-            "proprio": np.concatenate([obs["joint_q"], obs["joint_dq"]]).astype(np.float32),
+            # Keep legacy proprio while exposing semantically separated robot state terms.
+            "proprio": np.concatenate([joint_q, joint_dq]).astype(np.float32),
+            "joint_q": joint_q,
+            "joint_dq": joint_dq,
+            "gripper_ctrl": gripper_ctrl,
             "rgb": obs["rgb"],
             "depth": obs["depth"],
-            "action": obs["action"].astype(np.float32),
+            "action": action,
         }
 
     def get_camera_image(self) -> Tuple[np.ndarray, np.ndarray]:
