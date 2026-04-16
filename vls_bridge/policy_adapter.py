@@ -194,7 +194,7 @@ class LeRobotPolicy:
         if dtype_str == "auto":
             if self.device.type == "cuda":
                 try:
-                    major, _minor = self.torch.cuda.get_device_capability(self.device)
+                    major, _ = self.torch.cuda.get_device_capability(self.device)
                 except (RuntimeError, AssertionError, AttributeError, ValueError, TypeError):
                     major = 0
                 return self.torch.bfloat16 if major >= 8 else self.torch.float16
