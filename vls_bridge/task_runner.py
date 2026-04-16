@@ -55,7 +55,7 @@ def build_guidance_provider(guidance_cfg: GuidanceConfig) -> SimpleGuidanceProvi
         return SimpleGuidanceProvider()
     factory = _import_from_path(guidance_cfg.provider_factory)
     provider = factory(**guidance_cfg.provider_kwargs)
-    if not hasattr(provider, "query"):
+    if not callable(getattr(provider, "query", None)):
         raise TypeError("Guidance provider must expose a callable `query` method.")
     return provider
 

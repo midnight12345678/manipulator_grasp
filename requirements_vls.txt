@@ -5,5 +5,5 @@ modern-robotics
 roboticstoolbox-python
 pandas
 pyyaml
-torch>=2.1
-lerobot>=0.1
+torch>=2.1,<3.0
+lerobot>=0.1,<1.0
