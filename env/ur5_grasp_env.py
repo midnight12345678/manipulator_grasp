@@ -1,5 +1,6 @@
-import os.path
+import os
 import sys
+import warnings
 
 sys.path.append('../../manipulator_grasp')
 
@@ -61,11 +62,30 @@ class UR5GraspEnv:
         self.robot_T = self.robot.fkine(self.robot_q)
         self.T0 = self.robot_T.copy()
 
-        self.mj_renderer = mujoco.renderer.Renderer(self.mj_model, height=self.height, width=self.width)
-        self.mj_depth_renderer = mujoco.renderer.Renderer(self.mj_model, height=self.height, width=self.width)
-        self.mj_renderer.update_scene(self.mj_data, self.camera_id)
-        self.mj_depth_renderer.update_scene(self.mj_data, self.camera_id)
-        self.mj_depth_renderer.enable_depth_rendering()
+        renderer_cls = getattr(mujoco, "Renderer", None)
+        if renderer_cls is None:
+            renderer_cls = mujoco.renderer.Renderer
+        no_display = "DISPLAY" not in os.environ and "MUJOCO_GL" not in os.environ
+        if no_display:
+            self.mj_renderer = None
+            self.mj_depth_renderer = None
+            warnings.warn(
+                "No DISPLAY/MUJOCO_GL detected; falling back to zero RGB/depth observations."
+            )
+        else:
+            try:
+                self.mj_renderer = renderer_cls(self.mj_model, height=self.height, width=self.width)
+                self.mj_depth_renderer = renderer_cls(self.mj_model, height=self.height, width=self.width)
+                self.mj_renderer.update_scene(self.mj_data, self.camera_id)
+                self.mj_depth_renderer.update_scene(self.mj_data, self.camera_id)
+                self.mj_depth_renderer.enable_depth_rendering()
+            except Exception as exc:
+                self.mj_renderer = None
+                self.mj_depth_renderer = None
+                warnings.warn(
+                    f"Failed to initialize MuJoCo renderers ({exc}). "
+                    "Falling back to zero RGB/depth observations."
+                )
         if self.show_gui:
             self.mj_viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data)
         else:
@@ -110,6 +130,11 @@ class UR5GraspEnv:
             self.mj_viewer.sync()
 
     def render(self):
+        if self.mj_renderer is None or self.mj_depth_renderer is None:
+            return {
+                'img': np.zeros((self.height, self.width, 3), dtype=np.uint8),
+                'depth': np.zeros((self.height, self.width), dtype=np.float32)
+            }
         self.mj_renderer.update_scene(self.mj_data, self.camera_id)
         self.mj_depth_renderer.update_scene(self.mj_data, self.camera_id)
         return {

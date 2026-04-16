@@ -16,6 +16,8 @@ class GuidanceConfig:
     action_horizon: int = 14
     mcmc_steps: int = 4
     temperature: float = 1.0
+    provider_factory: Optional[str] = None
+    provider_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -25,6 +27,8 @@ class RuntimeConfig:
     show_gui: bool = False
     camera_id: int = 0
     sim_hz: int = 500
+    seed: Optional[int] = 42
+    save_rollout_path: Optional[str] = None
 
 
 @dataclass

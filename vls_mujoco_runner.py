@@ -27,9 +27,15 @@ def build_policy_adapter(cfg: VLSConfig):
 def main():
     parser = argparse.ArgumentParser(description="Run VLS-style inference-time steering on UR5 MuJoCo env.")
     parser.add_argument("--config", type=str, required=True, help="Path to JSON/YAML config file.")
+    parser.add_argument("--instruction", type=str, default=None, help="Override instruction from config.")
+    parser.add_argument("--seed", type=int, default=None, help="Override random seed from config.")
     args = parser.parse_args()
 
     cfg = VLSConfig.from_path(args.config)
+    if args.instruction is not None:
+        cfg.runtime.instruction = args.instruction
+    if args.seed is not None:
+        cfg.runtime.seed = args.seed
     env = MujocoEnvAdapter(
         sim_hz=cfg.runtime.sim_hz,
         show_gui=cfg.runtime.show_gui,
@@ -40,7 +46,9 @@ def main():
 
     try:
         result = runner.run_episode()
-        print(f"Episode done. steps={result['steps']} guidance={result['guidance']}")
+        print(f"Episode done. steps={result['steps']} seed={result['seed']} guidance={result['guidance']}")
+        if cfg.runtime.save_rollout_path:
+            print(f"Rollout saved to: {cfg.runtime.save_rollout_path}")
     finally:
         env.close()
 

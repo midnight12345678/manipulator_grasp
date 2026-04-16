@@ -4,7 +4,9 @@
     "episode_steps": 150,
     "show_gui": false,
     "camera_id": 0,
-    "sim_hz": 500
+    "sim_hz": 500,
+    "seed": 42,
+    "save_rollout_path": "./runs/vls_rollout_pi05_seed42.npz"
   },
   "guidance": {
     "use_guidance": true,
@@ -13,11 +15,13 @@
     "sample_batch_size": 20,
     "action_horizon": 14,
     "mcmc_steps": 4,
-    "temperature": 1.0
+    "temperature": 1.0,
+    "provider_factory": null,
+    "provider_kwargs": {}
   },
   "policy": {
     "policy_type": "pi",
-    "backend": "lerobot_pi05",
+    "backend": "lerobot",
     "checkpoint_path": "lerobot/pi05_base",
     "factory": null,
     "device": "cpu",
