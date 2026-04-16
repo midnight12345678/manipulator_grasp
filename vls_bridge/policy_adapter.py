@@ -266,4 +266,5 @@ class PiPolicyAdapter(CallablePolicyAdapter):
     pass
 
 
+# Deprecated alias kept for backward compatibility with older configs/imports.
 LeRobotPI05Policy = LeRobotPolicy
