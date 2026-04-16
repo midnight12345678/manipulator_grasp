@@ -28,7 +28,8 @@
 1. 在配置中选择策略后端：
    - `backend: "random"`：随机策略（用于联调流程）
    - `backend: "torchscript"`：加载 TorchScript 文件
-   - `backend: "lerobot_pi05"`：直接加载 HuggingFace `lerobot/pi05_base`
+   - `backend: "lerobot"`：加载 LeRobot 预训练策略（Pi0.5 或扩散策略），通过 `policy_name` 指定类型
+   - `backend: "lerobot_pi05"`：兼容别名（等价于 `lerobot`）
    - `backend: "factory"`：通过 `module.sub:build_fn` 注入你自己的模型加载逻辑
 2. 配置动作映射：
    - `action_mode`: `joint_delta` 或 `joint_absolute`
@@ -44,14 +45,14 @@ python vls_mujoco_runner.py --config vls_config.example.json
 
 示例配置已默认切换为：
 - `policy_type: "pi"`
-- `backend: "lerobot_pi05"`
+- `backend: "lerobot"`
 - `checkpoint_path: "lerobot/pi05_base"`
 - 语言任务直接复用 `runtime.instruction`（无需在 `policy.extra_kwargs` 重复配置）
 
 运行前请确保安装 `torch` 与 `lerobot`：
 
 ```bash
-pip install torch lerobot
+pip install -r requirements_vls.txt
 ```
 
 ## 接口约定
@@ -68,12 +69,23 @@ pip install torch lerobot
 ## 个性化任务
 
 - 通过 `runtime.instruction` 传入自然语言任务。
-- 默认 `SimpleGuidanceProvider` 为可替换占位实现；可在 `task_runner.py` 中接入你的 VLM 与关键点检测/跟踪系统。
+- 默认 `SimpleGuidanceProvider` 为可替换占位实现；可在配置中设置 `guidance.provider_factory` + `guidance.provider_kwargs` 注入你的 VLM 与关键点检测/跟踪系统。
+
+## 系统复现（Reproducibility）
+
+- `runtime.seed` 控制采样/引导随机性，保证同配置可复现。
+- `runtime.save_rollout_path` 可导出每次 rollout（动作序列、引导信息、任务指令、种子）到 `npz`，用于回放与对比。
+- CLI 支持覆盖参数：
+
+```bash
+python vls_mujoco_runner.py --config vls_config.example.json --instruction "pick the blue cube" --seed 123
+```
 
 ## 重要说明
 
 - 当前实现已完成 VLS 核心“接口迁移 + 数据匹配 + 引导机制”骨架接入。
 - 当前实现已打通“策略加载 + 动作映射 + 引导采样 + 环境执行”的完整链路，可直接运行。
+- 在无图形环境（无 `DISPLAY` 且未设置 `MUJOCO_GL`）下，会自动降级为零值 RGB/Depth 观测，确保 rollout 可复现执行。
 - 若要达到开源项目同等级效果，请进一步接入：
   - 真实 VLM（OpenAI/Anthropic 等）
   - 关键点检测与时序跟踪模块

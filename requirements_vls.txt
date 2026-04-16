@@ -1,0 +1,9 @@
+numpy<2
+mujoco
+spatialmath-python
+modern-robotics
+roboticstoolbox-python
+pandas
+pyyaml
+torch
+lerobot

@@ -110,7 +110,7 @@ class TorchScriptPolicy:
             return output
 
 
-class LeRobotPI05Policy:
+class LeRobotPolicy:
     def __init__(
         self,
         checkpoint_path: str,
@@ -121,14 +121,14 @@ class LeRobotPI05Policy:
         policy_name: str = "pi05",
     ):
         if not checkpoint_path:
-            raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot_pi05'.")
+            raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot'.")
         try:
             import torch
             from lerobot.policies.factory import get_policy_class
             from lerobot.processor import PolicyProcessorPipeline
             from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
         except ImportError as exc:
-            raise ImportError("backend='lerobot_pi05' requires installing lerobot and torch.") from exc
+            raise ImportError("backend='lerobot' requires installing lerobot and torch.") from exc
 
         self.torch = torch
         self.ACTION = ACTION
@@ -234,8 +234,8 @@ def build_policy_callable(
             obs_keys=obs_keys,
             default_action_dim=action_dim,
         )
-    if backend == "lerobot_pi05":
-        return LeRobotPI05Policy(
+    if backend in {"lerobot", "lerobot_pi05"}:
+        return LeRobotPolicy(
             checkpoint_path=checkpoint_path or "lerobot/pi05_base",
             device=device,
             task=extra_kwargs.get("task", ""),
@@ -264,3 +264,6 @@ class DiffusionPolicyAdapter(CallablePolicyAdapter):
 class PiPolicyAdapter(CallablePolicyAdapter):
     """Semantic adapter for Pi-family policies using the unified callable contract."""
     pass
+
+
+LeRobotPI05Policy = LeRobotPolicy

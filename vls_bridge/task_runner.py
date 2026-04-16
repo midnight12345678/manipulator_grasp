@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -37,6 +39,26 @@ class SimpleGuidanceProvider:
         }
 
 
+def _import_from_path(path: str) -> Any:
+    if ":" not in path:
+        raise ValueError(f"Factory path must be 'module.submodule:callable', got: {path}")
+    module_name, symbol_name = path.split(":", maxsplit=1)
+    module = importlib.import_module(module_name)
+    if not hasattr(module, symbol_name):
+        raise ValueError(f"Symbol '{symbol_name}' not found in module '{module_name}'.")
+    return getattr(module, symbol_name)
+
+
+def build_guidance_provider(guidance_cfg: GuidanceConfig) -> SimpleGuidanceProvider:
+    if not guidance_cfg.provider_factory:
+        return SimpleGuidanceProvider()
+    factory = _import_from_path(guidance_cfg.provider_factory)
+    provider = factory(**guidance_cfg.provider_kwargs)
+    if not hasattr(provider, "query"):
+        raise TypeError("Guidance provider must expose `query(instruction, rgb, depth)`.")
+    return provider
+
+
 class VLSRunner:
     def __init__(
         self,
@@ -52,8 +74,10 @@ class VLSRunner:
         self.runtime_cfg = runtime_cfg
         self.guidance_cfg = guidance_cfg
         self.action_mapper = ActionMapper(action_mapping_cfg or ActionMappingConfig())
-        self.guidance_provider = guidance_provider or SimpleGuidanceProvider()
-        self.rng = np.random.default_rng()
+        self.guidance_provider = guidance_provider or build_guidance_provider(guidance_cfg)
+        self.rng = np.random.default_rng(runtime_cfg.seed)
+        if runtime_cfg.seed is not None:
+            np.random.seed(runtime_cfg.seed)
 
     @staticmethod
     def _score_actions(action_sequences: np.ndarray, context: GuidanceContext) -> np.ndarray:
@@ -83,6 +107,7 @@ class VLSRunner:
                 {"guidance": guidance},
                 guide_scale=gcfg.guide_scale * GUIDE_SCALE_MULTIPLIER,
                 mcmc_steps=gcfg.mcmc_steps,
+                rng=self.rng,
             )
 
         reward = self._score_actions(candidates, context)
@@ -92,6 +117,19 @@ class VLSRunner:
         resampled = feynman_kac_resample(candidates, weights, self.rng)
         best = np.argmax(self._score_actions(resampled, context))
         return resampled[best]
+
+    def _save_rollout(self, actions: np.ndarray, guidance: Dict[str, Any]) -> None:
+        if not self.runtime_cfg.save_rollout_path:
+            return
+        output_path = Path(self.runtime_cfg.save_rollout_path).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            output_path,
+            actions=np.asarray(actions, dtype=np.float32),
+            guidance=np.array([guidance], dtype=object),
+            instruction=np.array([self.runtime_cfg.instruction], dtype=object),
+            seed=np.array([self.runtime_cfg.seed], dtype=object),
+        )
 
     def run_episode(self) -> Dict[str, Any]:
         obs = self.env.reset()
@@ -107,4 +145,6 @@ class VLSRunner:
             obs = result.obs
             executed.append(action.copy())
 
-        return {"steps": len(executed), "actions": np.asarray(executed), "guidance": guidance}
+        actions = np.asarray(executed, dtype=np.float32)
+        self._save_rollout(actions, guidance)
+        return {"steps": len(executed), "actions": actions, "guidance": guidance, "seed": self.runtime_cfg.seed}

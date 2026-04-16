@@ -48,12 +48,14 @@ def gradient_refinement(
     guide_scale: float,
     mcmc_steps: int,
     noise_scale: float = 1e-2,
+    rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     if mcmc_steps < 1:
         raise ValueError(f"mcmc_steps must be at least 1, got {mcmc_steps}.")
     refined = action_sequences.copy()
+    rng = rng or np.random.default_rng()
     for i in range(refined.shape[0]):
         for _ in range(mcmc_steps):
             grad = finite_diff_gradient(refined[i], reward_fn, context)
-            refined[i] = refined[i] + guide_scale * grad + np.random.randn(*grad.shape) * noise_scale
+            refined[i] = refined[i] + guide_scale * grad + rng.standard_normal(size=grad.shape) * noise_scale
     return refined
