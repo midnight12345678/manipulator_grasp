@@ -179,7 +179,8 @@ class LeRobotPolicy:
         dtype_str = str(dtype_name or "auto").lower()
         if dtype_str == "auto":
             if self.device.type == "cuda":
-                return self.torch.bfloat16 if self.torch.cuda.is_bf16_supported() else self.torch.float16
+                bf16_supported = bool(getattr(self.torch.cuda, "is_bf16_supported", lambda: False)())
+                return self.torch.bfloat16 if bf16_supported else self.torch.float16
             return self.torch.float32
         mapping = {
             "float32": self.torch.float32,
@@ -213,9 +214,7 @@ class LeRobotPolicy:
         raw_batch = self._build_raw_batch(obs)
         policy_batch = self.preprocessor(raw_batch) if self.preprocessor is not None else raw_batch
         use_amp = self.autocast_enabled and self.inference_dtype in (self.torch.float16, self.torch.bfloat16)
-        amp_context = (
-            self.torch.autocast(device_type=self.device.type, dtype=self.inference_dtype) if use_amp else nullcontext()
-        )
+        amp_context = self.torch.cuda.amp.autocast(dtype=self.inference_dtype) if use_amp else nullcontext()
         with self.torch.inference_mode():
             with amp_context:
                 if hasattr(self.policy, "predict_action_chunk"):
