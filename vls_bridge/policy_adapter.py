@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import nullcontext
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, Optional
 
@@ -119,6 +120,9 @@ class LeRobotPolicy:
         task: str = "",
         image_key: Optional[str] = None,
         policy_name: str = "pi05",
+        dtype: str = "auto",
+        use_autocast: bool = True,
+        state_dim: Optional[int] = None,
     ):
         if not checkpoint_path:
             raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot'.")
@@ -136,10 +140,22 @@ class LeRobotPolicy:
         self.OBS_STATE = OBS_STATE
         self.task = task
         self.image_key_override = image_key
-        self.policy = get_policy_class(policy_name).from_pretrained(checkpoint_path)
+        self.device = torch.device(device)
+        self.inference_dtype = self._resolve_dtype(dtype)
+        self.autocast_enabled = bool(use_autocast) and self.device.type == "cuda"
+        policy_cls = get_policy_class(policy_name)
+        self.policy = self._load_policy(policy_cls=policy_cls, checkpoint_path=checkpoint_path)
         self.policy.eval()
         if hasattr(self.policy, "to"):
-            self.policy.to(device)
+            try:
+                if self.device.type == "cuda":
+                    self.policy.to(device=self.device, dtype=self.inference_dtype)
+                else:
+                    self.policy.to(self.device)
+            except (TypeError, RuntimeError, ValueError):
+                self.policy.to(self.device)
+                self.inference_dtype = torch.float32
+                self.autocast_enabled = False
 
         self.preprocessor = None
         self.postprocessor = None
@@ -158,18 +174,121 @@ class LeRobotPolicy:
 
         cfg_input = getattr(self.policy.config, "input_features", {}) or {}
         image_keys = [k for k in cfg_input.keys() if k.startswith(f"{OBS_IMAGES}.")]
-        self.state_key = self.OBS_STATE if self.OBS_STATE in cfg_input or not cfg_input else self.OBS_STATE
+        # Pi0.5 policy输入约定为 `observation.state`，这里固定使用标准键，避免不同配置分支造成不一致。
+        self.state_key = self.OBS_STATE
         self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
+        self.expected_state_dim = state_dim if state_dim is not None else self._infer_state_dim(cfg_input, self.state_key)
+
+    @staticmethod
+    def _load_policy(policy_cls: Any, checkpoint_path: str) -> Any:
+        if not isinstance(checkpoint_path, str) or not checkpoint_path.strip():
+            raise ValueError("checkpoint_path must be a non-empty string.")
+        try:
+            return policy_cls.from_pretrained(checkpoint_path)
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
+            raise RuntimeError(
+                "Failed to load LeRobot policy checkpoint via official from_pretrained interface. "
+                "Please ensure checkpoint_path points to a compatible official checkpoint."
+            ) from exc
+
+    def _resolve_dtype(self, dtype_name: str):
+        dtype_str = str(dtype_name or "auto").lower()
+        if dtype_str == "auto":
+            if self.device.type == "cuda":
+                try:
+                    major, _ = self.torch.cuda.get_device_capability(self.device)
+                except (RuntimeError, AssertionError, AttributeError, ValueError, TypeError):
+                    major = 0
+                return self.torch.bfloat16 if major >= 8 else self.torch.float16
+            return self.torch.float32
+        mapping = {
+            "float32": self.torch.float32,
+            "fp32": self.torch.float32,
+            "float16": self.torch.float16,
+            "fp16": self.torch.float16,
+            "bfloat16": self.torch.bfloat16,
+            "bf16": self.torch.bfloat16,
+        }
+        if dtype_str not in mapping:
+            raise ValueError(f"Unsupported dtype '{dtype_name}'. Use one of: auto/fp32/fp16/bf16.")
+        return mapping[dtype_str]
 
     def _to_numpy(self, value: Any) -> np.ndarray:
         if hasattr(value, "detach"):
             value = value.detach().cpu().numpy()
         return np.asarray(value, dtype=np.float32)
 
+    @staticmethod
+    def _to_1d_float(value: Any) -> np.ndarray:
+        if value is None:
+            return np.zeros((0,), dtype=np.float32)
+        return np.asarray(value, dtype=np.float32).reshape(-1)
+
+    @staticmethod
+    def _extract_feature_dim(spec: Any) -> Optional[int]:
+        if spec is None:
+            return None
+        if isinstance(spec, (int, np.integer)):
+            return int(spec)
+        if isinstance(spec, dict):
+            for key in ("shape", "sizes", "size", "dim", "dimension"):
+                if key in spec:
+                    dim = LeRobotPolicy._extract_feature_dim(spec[key])
+                    if dim is not None:
+                        return dim
+            return None
+        if hasattr(spec, "shape"):
+            dim = LeRobotPolicy._extract_feature_dim(getattr(spec, "shape"))
+            if dim is not None:
+                return dim
+        if isinstance(spec, (list, tuple)):
+            dims = [int(v) for v in spec if isinstance(v, (int, np.integer))]
+            return dims[-1] if dims else None
+        return None
+
+    @classmethod
+    def _infer_state_dim(cls, input_features: Dict[str, Any], state_key: str) -> Optional[int]:
+        if not isinstance(input_features, dict) or state_key not in input_features:
+            return None
+        return cls._extract_feature_dim(input_features[state_key])
+
+    def _build_state_vector(self, obs: Dict[str, Any]) -> np.ndarray:
+        joint_q = self._to_1d_float(obs.get("joint_q"))
+        joint_dq = self._to_1d_float(obs.get("joint_dq"))
+        action = self._to_1d_float(obs.get("action"))
+        proprio = self._to_1d_float(obs.get("proprio"))
+
+        if joint_q.size > 0:
+            # Use physically meaningful state ordering first: arm joints + gripper command/state proxy.
+            core_parts = [joint_q]
+            if action.size > joint_q.size:
+                core_parts.append(action[joint_q.size:joint_q.size + 1])
+            core_state = np.concatenate(core_parts, axis=0)
+            extended_parts = [core_state]
+            if joint_dq.size > 0:
+                extended_parts.append(joint_dq)
+            if action.size > 0:
+                extended_parts.append(action)
+            extended_state = np.concatenate(extended_parts, axis=0)
+        elif proprio.size > 0:
+            core_state = proprio
+            extended_state = np.concatenate([proprio, action], axis=0) if action.size > 0 else proprio
+        else:
+            raise ValueError("LeRobot PI05 backend requires robot state in obs['joint_q'] or obs['proprio'].")
+
+        if self.expected_state_dim is None:
+            return core_state.astype(np.float32)
+        if self.expected_state_dim <= core_state.shape[0]:
+            return core_state[:self.expected_state_dim].astype(np.float32)
+        if self.expected_state_dim <= extended_state.shape[0]:
+            return extended_state[:self.expected_state_dim].astype(np.float32)
+        padded = np.zeros((self.expected_state_dim,), dtype=np.float32)
+        padded[:extended_state.shape[0]] = extended_state
+        return padded
+
     def _build_raw_batch(self, obs: Dict[str, Any]) -> Dict[str, Any]:
-        if "proprio" not in obs:
-            raise ValueError("LeRobot PI05 backend requires obs['proprio'].")
-        batch: Dict[str, Any] = {self.state_key: np.asarray(obs["proprio"], dtype=np.float32)}
+        state_vec = self._build_state_vector(obs)
+        batch: Dict[str, Any] = {self.state_key: state_vec}
         if "rgb" in obs and obs["rgb"] is not None:
             batch[self.resolved_image_key] = np.asarray(obs["rgb"])
         task_text = str(obs.get("instruction", self.task))
@@ -180,15 +299,18 @@ class LeRobotPolicy:
     def _predict_chunk(self, obs: Dict[str, Any], horizon: int) -> np.ndarray:
         raw_batch = self._build_raw_batch(obs)
         policy_batch = self.preprocessor(raw_batch) if self.preprocessor is not None else raw_batch
-        with self.torch.no_grad():
-            if hasattr(self.policy, "predict_action_chunk"):
-                actions = self.policy.predict_action_chunk(policy_batch)
-            else:
-                action = self.policy.select_action(policy_batch)
-                action_np = self._to_numpy(action)
-                if action_np.ndim == 1:
-                    action_np = action_np[None, :]
-                return np.repeat(action_np[:, None, :], horizon, axis=1)
+        use_amp = self.autocast_enabled and self.inference_dtype in (self.torch.float16, self.torch.bfloat16)
+        amp_context = self.torch.cuda.amp.autocast(dtype=self.inference_dtype) if use_amp else nullcontext()
+        with self.torch.inference_mode():
+            with amp_context:
+                if hasattr(self.policy, "predict_action_chunk"):
+                    actions = self.policy.predict_action_chunk(policy_batch)
+                else:
+                    action = self.policy.select_action(policy_batch)
+                    action_np = self._to_numpy(action)
+                    if action_np.ndim == 1:
+                        action_np = action_np[None, :]
+                    return np.repeat(action_np[:, None, :], horizon, axis=1)
 
         if self.postprocessor is not None:
             processed = self.postprocessor(actions)
@@ -241,6 +363,9 @@ def build_policy_callable(
             task=extra_kwargs.get("task", ""),
             image_key=extra_kwargs.get("image_key"),
             policy_name=extra_kwargs.get("policy_name", "pi05"),
+            dtype=extra_kwargs.get("dtype", "auto"),
+            use_autocast=extra_kwargs.get("use_autocast", True),
+            state_dim=extra_kwargs.get("state_dim"),
         )
     if backend == "factory":
         if not factory:
