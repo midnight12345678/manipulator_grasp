@@ -32,7 +32,9 @@
     ],
     "extra_kwargs": {
       "policy_name": "pi05",
-      "image_key": "observation.images.main"
+      "image_key": "observation.images.main",
+      "dtype": "float16",
+      "use_autocast": true
     }
   },
   "action_mapping": {

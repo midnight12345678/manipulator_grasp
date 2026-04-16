@@ -48,6 +48,9 @@ python vls_mujoco_runner.py --config vls_config.example.json
 - `backend: "lerobot"`
 - `checkpoint_path: "lerobot/pi05_base"`
 - 语言任务直接复用 `runtime.instruction`（无需在 `policy.extra_kwargs` 重复配置）
+- 若使用单卡 4090，建议在 `policy.extra_kwargs` 增加：
+  - `dtype: "float16"`（降低显存占用）
+  - `use_autocast: true`（推理时启用自动混合精度）
 
 运行前请确保安装 `torch` 与 `lerobot`：
 

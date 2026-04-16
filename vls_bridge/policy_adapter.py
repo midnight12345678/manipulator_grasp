@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import nullcontext
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, Optional
 
@@ -119,6 +120,8 @@ class LeRobotPolicy:
         task: str = "",
         image_key: Optional[str] = None,
         policy_name: str = "pi05",
+        dtype: str = "auto",
+        use_autocast: bool = True,
     ):
         if not checkpoint_path:
             raise ValueError("checkpoint_path must be set to a HF repo id or local path for backend='lerobot'.")
@@ -136,10 +139,21 @@ class LeRobotPolicy:
         self.OBS_STATE = OBS_STATE
         self.task = task
         self.image_key_override = image_key
+        self.device = torch.device(device)
+        self.inference_dtype = self._resolve_dtype(dtype)
+        self.autocast_enabled = bool(use_autocast) and self.device.type == "cuda"
         self.policy = get_policy_class(policy_name).from_pretrained(checkpoint_path)
         self.policy.eval()
         if hasattr(self.policy, "to"):
-            self.policy.to(device)
+            try:
+                if self.device.type == "cuda":
+                    self.policy.to(device=self.device, dtype=self.inference_dtype)
+                else:
+                    self.policy.to(self.device)
+            except (TypeError, RuntimeError, ValueError):
+                self.policy.to(self.device)
+                self.inference_dtype = torch.float32
+                self.autocast_enabled = False
 
         self.preprocessor = None
         self.postprocessor = None
@@ -161,6 +175,24 @@ class LeRobotPolicy:
         self.state_key = self.OBS_STATE if self.OBS_STATE in cfg_input or not cfg_input else self.OBS_STATE
         self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
 
+    def _resolve_dtype(self, dtype_name: str):
+        dtype_str = str(dtype_name or "auto").lower()
+        if dtype_str == "auto":
+            if self.device.type == "cuda":
+                return self.torch.bfloat16 if self.torch.cuda.is_bf16_supported() else self.torch.float16
+            return self.torch.float32
+        mapping = {
+            "float32": self.torch.float32,
+            "fp32": self.torch.float32,
+            "float16": self.torch.float16,
+            "fp16": self.torch.float16,
+            "bfloat16": self.torch.bfloat16,
+            "bf16": self.torch.bfloat16,
+        }
+        if dtype_str not in mapping:
+            raise ValueError(f"Unsupported dtype '{dtype_name}'. Use one of: auto/fp32/fp16/bf16.")
+        return mapping[dtype_str]
+
     def _to_numpy(self, value: Any) -> np.ndarray:
         if hasattr(value, "detach"):
             value = value.detach().cpu().numpy()
@@ -180,15 +212,20 @@ class LeRobotPolicy:
     def _predict_chunk(self, obs: Dict[str, Any], horizon: int) -> np.ndarray:
         raw_batch = self._build_raw_batch(obs)
         policy_batch = self.preprocessor(raw_batch) if self.preprocessor is not None else raw_batch
-        with self.torch.no_grad():
-            if hasattr(self.policy, "predict_action_chunk"):
-                actions = self.policy.predict_action_chunk(policy_batch)
-            else:
-                action = self.policy.select_action(policy_batch)
-                action_np = self._to_numpy(action)
-                if action_np.ndim == 1:
-                    action_np = action_np[None, :]
-                return np.repeat(action_np[:, None, :], horizon, axis=1)
+        use_amp = self.autocast_enabled and self.inference_dtype in (self.torch.float16, self.torch.bfloat16)
+        amp_context = (
+            self.torch.autocast(device_type=self.device.type, dtype=self.inference_dtype) if use_amp else nullcontext()
+        )
+        with self.torch.inference_mode():
+            with amp_context:
+                if hasattr(self.policy, "predict_action_chunk"):
+                    actions = self.policy.predict_action_chunk(policy_batch)
+                else:
+                    action = self.policy.select_action(policy_batch)
+                    action_np = self._to_numpy(action)
+                    if action_np.ndim == 1:
+                        action_np = action_np[None, :]
+                    return np.repeat(action_np[:, None, :], horizon, axis=1)
 
         if self.postprocessor is not None:
             processed = self.postprocessor(actions)
@@ -241,6 +278,8 @@ def build_policy_callable(
             task=extra_kwargs.get("task", ""),
             image_key=extra_kwargs.get("image_key"),
             policy_name=extra_kwargs.get("policy_name", "pi05"),
+            dtype=extra_kwargs.get("dtype", "auto"),
+            use_autocast=extra_kwargs.get("use_autocast", True),
         )
     if backend == "factory":
         if not factory:
