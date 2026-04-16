@@ -184,6 +184,8 @@ class LeRobotPolicy:
 
     @staticmethod
     def _invoke_with_supported_kwargs(fn: Any, checkpoint_path: str, kwargs: Dict[str, Any]) -> Any:
+        if not isinstance(checkpoint_path, str) or not checkpoint_path.strip():
+            raise ValueError("checkpoint_path must be a non-empty string.")
         signature = inspect.signature(fn)
         params = signature.parameters
         accepts_var_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
@@ -205,7 +207,7 @@ class LeRobotPolicy:
         for kwargs in attempts:
             try:
                 return self._invoke_with_supported_kwargs(from_pretrained, checkpoint_path, kwargs)
-            except Exception as exc:
+            except (RuntimeError, ValueError, TypeError, OSError) as exc:
                 errors.append((kwargs, exc))
         error_text = "\n".join([f"kwargs={kwargs}: {exc}" for kwargs, exc in errors])
         raise RuntimeError(
