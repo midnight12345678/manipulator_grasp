@@ -176,19 +176,20 @@ class LeRobotPolicy:
         self.resolved_image_key = image_key or (image_keys[0] if image_keys else f"{self.OBS_IMAGES}.main")
 
     def _resolve_dtype(self, dtype_name: str):
+        torch = self.torch
         dtype_str = str(dtype_name or "auto").lower()
         if dtype_str == "auto":
             if self.device.type == "cuda":
-                bf16_supported = bool(getattr(self.torch.cuda, "is_bf16_supported", lambda: False)())
-                return self.torch.bfloat16 if bf16_supported else self.torch.float16
-            return self.torch.float32
+                major, _ = torch.cuda.get_device_capability(self.device)
+                return torch.bfloat16 if major >= 8 else torch.float16
+            return torch.float32
         mapping = {
-            "float32": self.torch.float32,
-            "fp32": self.torch.float32,
-            "float16": self.torch.float16,
-            "fp16": self.torch.float16,
-            "bfloat16": self.torch.bfloat16,
-            "bf16": self.torch.bfloat16,
+            "float32": torch.float32,
+            "fp32": torch.float32,
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
         }
         if dtype_str not in mapping:
             raise ValueError(f"Unsupported dtype '{dtype_name}'. Use one of: auto/fp32/fp16/bf16.")
@@ -211,11 +212,12 @@ class LeRobotPolicy:
         return batch
 
     def _predict_chunk(self, obs: Dict[str, Any], horizon: int) -> np.ndarray:
+        torch = self.torch
         raw_batch = self._build_raw_batch(obs)
         policy_batch = self.preprocessor(raw_batch) if self.preprocessor is not None else raw_batch
-        use_amp = self.autocast_enabled and self.inference_dtype in (self.torch.float16, self.torch.bfloat16)
-        amp_context = self.torch.cuda.amp.autocast(dtype=self.inference_dtype) if use_amp else nullcontext()
-        with self.torch.inference_mode():
+        use_amp = self.autocast_enabled and self.inference_dtype in (torch.float16, torch.bfloat16)
+        amp_context = torch.cuda.amp.autocast(dtype=self.inference_dtype) if use_amp else nullcontext()
+        with torch.inference_mode():
             with amp_context:
                 if hasattr(self.policy, "predict_action_chunk"):
                     actions = self.policy.predict_action_chunk(policy_batch)
