@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -76,8 +77,6 @@ class VLSRunner:
         self.action_mapper = ActionMapper(action_mapping_cfg or ActionMappingConfig())
         self.guidance_provider = guidance_provider or build_guidance_provider(guidance_cfg)
         self.rng = np.random.default_rng(runtime_cfg.seed)
-        if runtime_cfg.seed is not None:
-            np.random.seed(runtime_cfg.seed)
 
     @staticmethod
     def _score_actions(action_sequences: np.ndarray, context: GuidanceContext) -> np.ndarray:
@@ -123,13 +122,28 @@ class VLSRunner:
             return
         output_path = Path(self.runtime_cfg.save_rollout_path).expanduser().resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata = {
+            "instruction": self.runtime_cfg.instruction,
+            "seed": self.runtime_cfg.seed,
+            "guidance": self._to_jsonable(guidance),
+        }
         np.savez_compressed(
             output_path,
             actions=np.asarray(actions, dtype=np.float32),
-            guidance=np.array([guidance], dtype=object),
-            instruction=np.array([self.runtime_cfg.instruction], dtype=object),
-            seed=np.array([self.runtime_cfg.seed], dtype=object),
+            metadata_json=np.array([json.dumps(metadata, ensure_ascii=False)]),
         )
+
+    @staticmethod
+    def _to_jsonable(value: Any) -> Any:
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, (np.floating, np.integer)):
+            return value.item()
+        if isinstance(value, dict):
+            return {str(k): VLSRunner._to_jsonable(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [VLSRunner._to_jsonable(v) for v in value]
+        return value
 
     def run_episode(self) -> Dict[str, Any]:
         obs = self.env.reset()
